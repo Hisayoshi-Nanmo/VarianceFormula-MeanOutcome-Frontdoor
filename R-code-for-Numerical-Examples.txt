@@ -1,0 +1,200 @@
+
+
+library(ggplot2)
+library(gridExtra)
+options(scipen=100)
+
+
+# Parameter settings #
+ 
+ n<-50             # Samplesize of observations for estimation #
+ n_new<-500        # Samplesize of new observations #
+ p<-1              # Number of variables which satisfy backdoor criterion w.r.t (x,y) #
+ q<-1              # Number of variables which satisfy frontdoor criterion w.r.t (x,y) # 
+ sig.alpha<-0.05   # Significance level #
+ iter<-1000        # Number of iterations for estimation #
+
+
+# Variable parameter #
+ 
+ a_xz<--0.8   
+ a_sx<-0.2 
+
+
+# Fixed parameter # 
+ 
+ a_yz<-0.5  
+ a_ys<-0.5  
+
+  
+# Calculation of error variances #
+ 
+ sigma_xx.z<-1-a_xz^2
+ sigma_yy.sz<-1-a_ys^2-a_yz^2-2*a_ys*a_yz*a_sx*a_xz
+ sigma_ss.x<-1-a_sx^2
+ sigma_zz<-1
+
+
+# Iteration #
+
+ samples_beta_yx.xs<-rep(0,iter)
+ samples_beta_ys.xs<-rep(0,iter)
+ samples_beta_yx.xz<-rep(0,iter)
+ samples_beta_yz.xz<-rep(0,iter)
+ samples_beta_yx<-rep(0,iter)
+ samples_beta_sx<-rep(0,iter)
+ samples_sigma_yy.xs<-rep(0,iter)
+ samples_sigma_yy.xz<-rep(0,iter)
+ samples_sigma_yy.x<-rep(0,iter)
+ samples_sigma_xx.z<-rep(0,iter)
+ samples_sigma_ss.x<-rep(0,iter)
+ samples_sigma_xx<-rep(0,iter)
+ samples_sigma_zz<-rep(0,iter)
+ samples_mu_x<-rep(0,iter)
+ samples_mu_z<-rep(0,iter)
+ samples_mu_y<-rep(0,iter)
+
+ for(i in 1:iter){
+
+	# Data generating #
+	
+	 e_z<-rnorm(n,0,sqrt(sigma_zz))
+	 e_x.z<-rnorm(n,0,sqrt(sigma_xx.z))
+	 e_s.x<-rnorm(n,0,sqrt(sigma_ss.x))
+	 e_y.sz<-rnorm(n,0,sqrt(sigma_yy.sz))
+
+	 z<-e_z
+	 x<-a_xz*z+e_x.z
+	 s<-a_sx*x+e_s.x
+	 y<-a_ys*s+a_yz*z+e_y.sz
+
+
+	# Estimation #
+
+	 iter_beta_ys.sz<-as.numeric(lm(y~s+z)$coef[2])
+	 iter_beta_yz.sz<-as.numeric(lm(y~s+z)$coef[3])
+	 iter_beta_yx.xs<-as.numeric(lm(y~x+s)$coef[2])
+	 iter_beta_ys.xs<-as.numeric(lm(y~x+s)$coef[3])
+	 iter_beta_sx<-as.numeric(lm(s~x)$coef[2])
+	 iter_beta_xz<-as.numeric(lm(x~z)$coef[2])
+	 iter_beta_yx<-as.numeric(lm(y~x)$coef[2])
+
+	 A_frontdoor<-cbind(rep(0,4),c(iter_beta_ys.sz,0,0,0),c(0,iter_beta_sx,0,0),c(iter_beta_yz.sz,0,iter_beta_xz,0))
+	 error_variance_frontdoor<-(diag(4)-A_frontdoor)%*%var(cbind(y,s,x,z))%*%t(diag(4)-A_frontdoor)
+
+	 iter_sigma_yy<-var(y)
+	 iter_sigma_xx<-var(x)
+	 iter_sigma_xy<-cov(x,y)
+	 iter_sigma_yy.xs<-error_variance_frontdoor[1,1]
+	 iter_sigma_xx.z<-error_variance_frontdoor[3,3]
+	 iter_sigma_ss.x<-error_variance_frontdoor[2,2]
+	 iter_sigma_yy.x<-iter_sigma_yy+(iter_beta_yx^2)*iter_sigma_xx-2*iter_beta_yx*iter_sigma_xy
+	 iter_mu_x<-mean(x)
+	 iter_mu_z<-mean(z)
+	 iter_mu_y<-mean(y)
+	 iter_beta_yx.xz<-as.numeric(lm(y~x+z)$coef[2])
+	 iter_beta_yz.xz<-as.numeric(lm(y~x+z)$coef[3])
+
+	 A_backdoor<-cbind(rep(0,3),c(iter_beta_yx.xz,0,0),c(iter_beta_yz.xz,iter_beta_xz,0))
+	 error_variance_backdoor<-(diag(3)-A_backdoor)%*%var(cbind(y,x,z))%*%t(diag(3)-A_backdoor)
+
+	 iter_sigma_yy.xz<-error_variance_backdoor[1,1]
+	 iter_sigma_zz<-var(z)
+
+	 samples_beta_yx.xs[i]<-iter_beta_yx.xs
+	 samples_beta_ys.xs[i]<-iter_beta_ys.xs
+	 samples_beta_yx.xz[i]<-iter_beta_yx.xz
+	 samples_beta_yz.xz[i]<-iter_beta_yz.xz
+	 samples_beta_yx[i]<-iter_beta_yx
+	 samples_beta_sx[i]<-iter_beta_sx
+	 samples_sigma_yy.xs[i]<-iter_sigma_yy.xs
+	 samples_sigma_yy.xz[i]<-iter_sigma_yy.xz
+	 samples_sigma_xx.z[i]<-iter_sigma_xx.z
+	 samples_sigma_ss.x[i]<-iter_sigma_ss.x
+	 samples_sigma_yy.x[i]<-iter_sigma_yy.x
+	 samples_sigma_xx[i]<-iter_sigma_xx
+	 samples_sigma_zz[i]<-iter_sigma_zz
+	 samples_mu_x[i]<-iter_mu_x
+	 samples_mu_z[i]<-iter_mu_z
+	 samples_mu_y[i]<-iter_mu_y
+ }
+
+
+# Averaging of estimates #
+
+ hat_beta_yx.xs<-mean(samples_beta_yx.xs)
+ hat_beta_ys.xs<-mean(samples_beta_ys.xs)
+ hat_beta_yx.xz<-mean(samples_beta_yx.xz)
+ hat_beta_yz.xz<-mean(samples_beta_yz.xz)
+ hat_beta_yx<-mean(samples_beta_yx)
+ hat_beta_sx<-mean(samples_beta_sx)
+ hat_sigma_yy.xs<-mean(samples_sigma_yy.xs)
+ hat_sigma_yy.xz<-mean(samples_sigma_yy.xz)
+ hat_sigma_xx.z<-mean(samples_sigma_xx.z)
+ hat_sigma_ss.x<-mean(samples_sigma_ss.x)
+ hat_sigma_yy.x<-mean(samples_sigma_yy.x)
+ hat_sigma_xx<-mean(samples_sigma_xx)
+ hat_sigma_zz<-mean(samples_sigma_zz)
+ hat_mu_x<-mean(samples_mu_x)
+ hat_mu_z<-mean(samples_mu_z)
+ hat_mu_y<-mean(samples_mu_y)
+
+
+# New observations without external intervention #
+
+ e_z_without<-rnorm(n_new,0,sqrt(sigma_zz))
+ e_x.z_without<-rnorm(n_new,0,sqrt(sigma_xx.z))
+ e_s.x_without<-rnorm(n_new,0,sqrt(sigma_ss.x))
+ e_y.sz_without<-rnorm(n_new,0,sqrt(sigma_yy.sz))
+
+ z_without<-e_z_without
+ x_without<-a_xz*z_without+e_x.z_without
+ s_without<-a_sx*x_without+e_s.x_without
+ y_without<-a_ys*s_without+a_yz*z_without+e_y.sz_without
+
+ data.without<-data.frame(cbind(x_without,y_without))
+
+
+# New observations with external intervention #
+
+ e_z_with<-rnorm(n_new,0,sqrt(sigma_zz))
+ e_s.x_with<-rnorm(n_new,0,sqrt(sigma_ss.x))
+ e_y.sz_with<-rnorm(n_new,0,sqrt(sigma_yy.sz))
+
+ z_with<-e_z_with
+ x_with<-runif(n_new,min=-3,max=3)
+ s_with<-a_sx*x_with+e_s.x_with
+ y_with<-a_ys*s_with+a_yz*z_with+e_y.sz_with
+
+ data.with<-data.frame(cbind(x_with,y_with))
+
+
+# Prediction interval functions and scatterplots #
+
+ z_alpha<-qnorm(1-(sig.alpha/2))
+
+ meanresponse_univariate<-function(x){hat_mu_y+hat_beta_yx*(x-hat_mu_x)}
+ meanresponse_backdoor<-function(x){hat_mu_y+hat_beta_yx.xz*(x-hat_mu_x)}
+ meanresponse_frontdoor<-function(x){hat_mu_y+hat_beta_ys.xs*hat_beta_sx*(x-hat_mu_x)}
+ MSE_univariate<-function(x){(1+1/n)*hat_sigma_yy.x+(hat_sigma_yy.x/((n-3)*hat_sigma_xx))*((x-hat_mu_x)^2+hat_sigma_xx/n)}
+ MSE_backdoor<-function(x){(1+1/n)*(hat_sigma_yy.xz+hat_beta_yz.xz*hat_sigma_zz*hat_beta_yz.xz)+(hat_sigma_yy.xz/((n-p-3)*hat_sigma_xx.z))*((x-hat_mu_x)^2+hat_sigma_xx/n)}
+ MSE_frontdoor<-function(x){(1+1/n)*(hat_sigma_yy.x+(hat_beta_yx.xs^2)*hat_sigma_xx)+((x-hat_mu_x)^2+hat_sigma_xx/n)*(hat_sigma_yy.xs/((n-q-3)*hat_sigma_xx.z)-hat_sigma_yy.xs/((n-3)*hat_sigma_xx)+hat_beta_ys.xs*hat_sigma_ss.x*hat_beta_ys.xs/((n-3)*hat_sigma_xx))}
+
+ plot_interval<-ggplot(data=data.frame(X=c(-4,4),Y=c(-4,4)), aes(x=X,y=Y))
+ plot_interval<-plot_interval+stat_function(fun=function(x)meanresponse_univariate(x)+z_alpha*sqrt(MSE_univariate(x)),lwd=1.2,lty="dotdash",col="gray40")
+ plot_interval<-plot_interval+stat_function(fun=function(x)meanresponse_univariate(x)-z_alpha*sqrt(MSE_univariate(x)),lwd=1.2,lty="dotdash",col="gray40")
+ plot_interval<-plot_interval+stat_function(fun=function(x)meanresponse_univariate(x),lwd=1.2,lty="dotdash",col="gray40")
+ plot_interval<-plot_interval+stat_function(fun=function(x)meanresponse_backdoor(x)+z_alpha*sqrt(MSE_backdoor(x)),lwd=1.2,col="gray55")
+ plot_interval<-plot_interval+stat_function(fun=function(x)meanresponse_backdoor(x)-z_alpha*sqrt(MSE_backdoor(x)),lwd=1.2,col="gray55")
+ plot_interval<-plot_interval+stat_function(fun=function(x)meanresponse_backdoor(x),lwd=1.2,col="gray55")
+ plot_interval<-plot_interval+stat_function(fun=function(x)meanresponse_frontdoor(x)+z_alpha*sqrt(MSE_frontdoor(x)),lwd=1.2,col="gray30")
+ plot_interval<-plot_interval+stat_function(fun=function(x)meanresponse_frontdoor(x)-z_alpha*sqrt(MSE_frontdoor(x)),lwd=1.2,col="gray30")
+ plot_interval<-plot_interval+stat_function(fun=function(x)meanresponse_frontdoor(x),lwd=1.2,col="gray30")
+ plot_interval<-plot_interval+theme(panel.grid.major = element_blank(),panel.grid.minor = element_blank(),panel.background = element_blank())
+ plot_interval<-plot_interval+geom_vline(xintercept=0,col="gray50")+geom_hline(yintercept=0,col="gray50")
+
+ plot_without<-plot_interval+geom_point(data=data.without, aes(x=x_without,y=y_without),col="gray40")
+ plot_with<-plot_interval+geom_point(data=data.with, aes(x=x_with,y=y_with),col="gray40")
+
+ grid.arrange(plot_without,plot_with,ncol = 2)
+
